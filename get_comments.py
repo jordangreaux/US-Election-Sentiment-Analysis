@@ -4,6 +4,9 @@ import pandas as pd
 from datetime import datetime
 import time
 import schedule
+import spacy
+
+ner = spacy.load('en_core_web_sm')
 
 reddit = praw.Reddit(
     client_id = "CLIENT_ID_HERE",
@@ -28,14 +31,11 @@ def scrape_comments(post):
 
 all_comments = []
 
-# Run on schedule
+# Schedule fetch, handle rate limit error
 def scheduled_fetch():
-    # Exception Handling
+    global all_comments
     retry_attempts = 5
     backoff_time = 1
-
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    file_name = f"data_{timestamp}.csv"
 
     while retry_attempts > 0:
         try:
@@ -43,7 +43,8 @@ def scheduled_fetch():
             for post in top_posts_today:
                 print(f'Scraping comments from post: {post.title}')
                 comments = scrape_comments(post)
-                all_comments.extend(comments)
+                comments_df = pd.DataFrame(comments)
+                all_comments = pd.concat([all_comments, comments_df], ignore_index=True)
             break  # Exit the loop if successful
         except praw.exceptions.APIException as e:
             if e.error_type == 'RATELIMIT':
@@ -58,16 +59,45 @@ def scheduled_fetch():
             print(f'Unexpected error: {e}')
             break
 
-    if all_comments:
-        all_comments_df = pd.DataFrame(all_comments)
-        all_comments_df.to_csv(file_name, index=False)
-        print(f'Data saved to {file_name}')
+    if not all_comments.empty:
+        timestamp = datetime.now().strftime("%Y%m%d_%H:%M:%S")
+        file_name = f"data_{timestamp}.csv"
+        all_comments.to_csv(file_name, index=False)
+        print(f'\n{len(all_comments)} comments fetched and saved to {file_name}')
     else:
-        print('No comments were collected.')
+        print('No comments were fetched.')
+
+all_comments = pd.DataFrame(all_comments)
+
+# Get entities using named entity recognition in spacy
+def get_entities(df):
+    timestamp = datetime.now().strftime("%Y%m%d_%H:%M:%S")
+    file_name = f"entities_{timestamp}.csv"
+    data = {
+        'comment': [],
+        'entities': []
+    }
+
+    print('\nGetting named entities...\n')
+    
+    for index, row in df.iterrows():
+        text = row['comment']
+        doc = ner(text)
+        entities = [(ent.text, ent.label_) for ent in doc.ents]
+
+        if entities:
+            data['comment'].append(text)
+            data['entities'].append(entities)
+
+    output_df = pd.DataFrame(data)
+    output_df.to_csv(file_name, index=False)
+    print(f'Data saved to {file_name}')
 
 schedule.every(12).hours.do(scheduled_fetch)
+schedule.every(12).hours.do(get_entities, all_comments)
 
 scheduled_fetch()
+get_entities(all_comments)
 
 # Run continuously
 while True:
