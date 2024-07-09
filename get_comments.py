@@ -59,19 +59,10 @@ def scheduled_fetch():
             print(f'Unexpected error: {e}')
             break
 
-    if not all_comments.empty:
-        timestamp = datetime.now().strftime("%Y%m%d_%H:%M:%S")
-        file_name = f"data_{timestamp}.csv"
-        all_comments.to_csv(file_name, index=False)
-        print(f'\n{len(all_comments)} comments fetched and saved to {file_name}')
-    else:
-        print('No comments were fetched.')
-
 all_comments = pd.DataFrame(all_comments)
 
-# Get entities using named entity recognition in spacy
 def get_entities(df):
-    timestamp = datetime.now().strftime("%Y%m%d_%H:%M:%S")
+    timestamp = datetime.now().strftime("%Y-%m-%d_%H:%M:%S")
     file_name = f"entities_{timestamp}.csv"
     data = {
         'comment': [],
@@ -90,6 +81,7 @@ def get_entities(df):
             data['entities'].append(entities)
 
     output_df = pd.DataFrame(data)
+    output_df = pd.concat([all_comments['timestamp'], output_df], axis=1) # Concatenate timestamp column to prevent duplicate columns
     output_df.to_csv(file_name, index=False)
     print(f'Data saved to {file_name}')
 
